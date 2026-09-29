@@ -2,6 +2,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
+<link rel="preconnect" href="https://lh3.googleusercontent.com">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DR DAS GRIFES — Catálogo</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
@@ -680,7 +683,7 @@ src="https://www.facebook.com/tr?id=1559873742409715&ev=PageView&noscript=1"
 <!-- FILTROS -->
 <div class="filters" id="filtersBar">
   <span class="filter-label">CATEGORIA</span>
-  <button class="filter-btn active" onclick="filterCategoria('todos', this)">TODOS</button>
+  <button class="filter-btn active" id="btnTodos" onclick="filterCategoria('todos', this)">TODOS</button>
   <!-- categorias dinâmicas -->
   <input class="search-box" type="text" placeholder="Buscar produto..." oninput="searchProducts(this.value)" id="searchInput">
 </div>
@@ -763,50 +766,112 @@ let activeCategoria = 'todos';
 let searchTerm = '';
 
 // ── LOAD DATA ────────────────────────────────────────────────────
-async function loadProducts() {
-  try {
-    const res = await fetch(API_URL);
-    const rows = await res.json();
+// O catálogo abre na hora com a última versão salva no aparelho e
+// atualiza em segundo plano. A chamada à planilha tem limite de tempo
+// e tenta de novo sozinha, então ninguém precisa ficar dando F5.
+const CACHE_KEY = 'dg_catalogo_v1';
+let lastRowsJson = '';
 
-    const produtos = {};
-
-    for (const row of rows) {
-      // Busca as colunas de forma flexível (case insensitive)
-      const get = (obj, key) => {
-        const k = Object.keys(obj).find(k => k.toLowerCase().includes(key));
-        return k ? String(obj[k] || '').trim() : '';
-      };
-
-      const id    = get(row, 'id');
-      const nome  = get(row, 'nome');
-      const cat   = get(row, 'categoria');
-      const marca = get(row, 'marca');
-      const cor   = get(row, 'cor');
-      const tam   = get(row, 'tamanho');
-      const preco = get(row, 'pre');
-      const foto  = get(row, 'foto');
-
-      if (!nome || !foto) continue;
-
-      // Agrupa por foto (mesmo produto, tamanhos diferentes)
-      const key = foto;
-      if (!produtos[key]) {
-        produtos[key] = { id, nome, cat, marca, cor, preco, foto, tamanhos: [] };
+async function fetchComRetry(url, tentativas = 4, timeoutMs = 15000) {
+  let ultimoErro;
+  for (let i = 0; i < tentativas; i++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const sep = url.includes('?') ? '&' : '?';
+      const res = await fetch(url + (i ? sep + 't=' + Date.now() : ''), { signal: ctrl.signal });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      if (!Array.isArray(data) || !data.length) throw new Error('Resposta inválida');
+      return data;
+    } catch (e) {
+      ultimoErro = e;
+      console.warn('Tentativa ' + (i + 1) + ' falhou:', e);
+      if (i < tentativas - 1) {
+        const t = document.getElementById('sectionTitle');
+        if (!allProducts.length && t) t.textContent = 'CARREGANDO PRODUTOS... (TENTATIVA ' + (i + 2) + ')';
+        await new Promise(r => setTimeout(r, 1000 * (i + 1)));
       }
-      if (tam && !produtos[key].tamanhos.includes(tam)) {
-        produtos[key].tamanhos.push(tam);
-      }
+    } finally {
+      clearTimeout(timer);
     }
-
-    allProducts = Object.values(produtos);
-    buildCategories();
-    applyFilters();
-  } catch(e) {
-    console.error(e);
-    document.getElementById('productsGrid').innerHTML =
-      '<div class="no-results">Erro ao carregar produtos. Tente novamente.</div>';
-    document.getElementById('sectionTitle').textContent = 'ERRO';
   }
+  throw ultimoErro;
+}
+
+function processRows(rows) {
+  const json = JSON.stringify(rows);
+  if (json === lastRowsJson) return;   // nada mudou, não redesenha
+  lastRowsJson = json;
+
+  const produtos = {};
+
+  for (const row of rows) {
+    // Busca as colunas de forma flexível (case insensitive)
+    const get = (obj, key) => {
+      const k = Object.keys(obj).find(k => k.toLowerCase().includes(key));
+      return k ? String(obj[k] || '').trim() : '';
+    };
+
+    const id    = get(row, 'id');
+    const nome  = get(row, 'nome');
+    const cat   = get(row, 'categoria');
+    const marca = get(row, 'marca');
+    const cor   = get(row, 'cor');
+    const tam   = get(row, 'tamanho');
+    const preco = get(row, 'pre');
+    const foto  = get(row, 'foto');
+
+    if (!nome || !foto) continue;
+
+    // Agrupa por foto (mesmo produto, tamanhos diferentes)
+    const key = foto;
+    if (!produtos[key]) {
+      produtos[key] = { id, nome, cat, marca, cor, preco, foto, tamanhos: [] };
+    }
+    if (tam && !produtos[key].tamanhos.includes(tam)) {
+      produtos[key].tamanhos.push(tam);
+    }
+  }
+
+  allProducts = Object.values(produtos);
+  if (activeCategoria !== 'todos' && !allProducts.some(p => p.cat === activeCategoria)) {
+    activeCategoria = 'todos';
+  }
+  buildCategories();
+  applyFilters();
+}
+
+async function loadProducts() {
+  let temCache = false;
+  try {
+    const salvo = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+    if (salvo && Array.isArray(salvo.rows) && salvo.rows.length) {
+      processRows(salvo.rows);
+      temCache = true;
+    }
+  } catch (e) { /* sem cache, segue */ }
+
+  try {
+    const rows = await fetchComRetry(API_URL);
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), rows })); } catch (e) {}
+    processRows(rows);
+  } catch (e) {
+    console.error(e);
+    if (!temCache) {
+      document.getElementById('productsGrid').innerHTML =
+        '<div class="no-results">Não conseguimos carregar os produtos agora.<br><br>' +
+        '<button class="filter-btn active" onclick="retryLoad()">TENTAR DE NOVO</button></div>';
+      document.getElementById('sectionTitle').textContent = 'ERRO';
+    }
+  }
+}
+
+function retryLoad() {
+  document.getElementById('sectionTitle').textContent = 'CARREGANDO PRODUTOS...';
+  document.getElementById('productsGrid').innerHTML =
+    '<div class="loading" style="grid-column:1/-1"><div class="loading-ring"></div><p>Carregando catálogo</p></div>';
+  loadProducts();
 }
 
 // ── CATEGORIAS ───────────────────────────────────────────────────
@@ -815,9 +880,13 @@ function buildCategories() {
   const bar = document.getElementById('filtersBar');
   const search = document.getElementById('searchInput');
 
+  bar.querySelectorAll('.filter-btn[data-cat]').forEach(b => b.remove());
+  document.getElementById('btnTodos').classList.toggle('active', activeCategoria === 'todos');
+
   cats.forEach(cat => {
     const btn = document.createElement('button');
-    btn.className = 'filter-btn';
+    btn.className = 'filter-btn' + (cat === activeCategoria ? ' active' : '');
+    btn.dataset.cat = cat;
     btn.textContent = cat.toUpperCase();
     btn.onclick = () => filterCategoria(cat, btn);
     bar.insertBefore(btn, search);
@@ -849,10 +918,27 @@ function applyFilters() {
 }
 
 // ── RENDER ───────────────────────────────────────────────────────
+function getDriveId(url) {
+  const m = String(url).match(/\/d\/([\w-]+)/) || String(url).match(/[?&]id=([\w-]+)/);
+  return m ? m[1] : null;
+}
+
+// Servidor de imagens do Google (bem mais rápido que o thumbnail do Drive)
 function getDriveThumb(url) {
-  const match = url.match(/\/d\/(.*?)\/view/);
-  if (match) return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w600`;
+  const id = getDriveId(url);
+  if (id) return `https://lh3.googleusercontent.com/d/${id}=w600`;
   return url;
+}
+
+const IMG_PLACEHOLDER = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400"><rect fill="#2a2a2a" width="300" height="400"/><text x="150" y="210" fill="#555" text-anchor="middle" font-size="40">👕</text></svg>');
+
+// Se a imagem falhar: tenta o thumbnail do Drive, depois o placeholder
+function imgFallback(img) {
+  const id = getDriveId(img.dataset.src || '');
+  const step = Number(img.dataset.step || 0);
+  img.dataset.step = step + 1;
+  if (step === 0 && id) img.src = `https://drive.google.com/thumbnail?id=${id}&sz=w600`;
+  else { img.onerror = null; img.src = IMG_PLACEHOLDER; }
 }
 
 function hasPrice(val) {
@@ -878,7 +964,7 @@ function renderProducts() {
 
   grid.innerHTML = filteredProducts.map((p, i) => `
     <div class="product-card" onclick="openModal(${i})" style="animation: fadeIn 0.4s ease ${(i % 12) * 0.04}s both">
-      <img src="${getDriveThumb(p.foto)}" alt="${p.marca || p.cat}" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 300 400%22><rect fill=%22%232a2a2a%22 width=%22300%22 height=%22400%22/><text x=%22150%22 y=%22210%22 fill=%22%23555%22 text-anchor=%22middle%22 font-size=%2240%22>👕</text></svg>'">
+      <img src="${getDriveThumb(p.foto)}" data-src="${p.foto}" alt="${p.marca || p.cat}" loading="lazy" decoding="async" onerror="imgFallback(this)">
       <div class="card-info-always">
         <div class="card-brand">${p.marca || p.cat}</div>
         <div class="card-cat">${p.cat}</div>
@@ -897,7 +983,11 @@ function openModal(idx) {
   currentQty = 1;
   currentSize = null;
 
-  document.getElementById('modalImg').src = getDriveThumb(currentProduct.foto);
+  const mImg = document.getElementById('modalImg');
+  mImg.dataset.step = 0;
+  mImg.dataset.src = currentProduct.foto;
+  mImg.onerror = () => imgFallback(mImg);
+  mImg.src = getDriveThumb(currentProduct.foto);
   document.getElementById('modalName').textContent = currentProduct.marca || currentProduct.cat;
   document.getElementById('modalCat').textContent = currentProduct.cat;
   document.getElementById('modalCor').innerHTML = currentProduct.cor
@@ -1003,8 +1093,7 @@ function updateCartUI() {
 
   itemsEl.innerHTML = cart.map(item => `
     <div class="cart-item">
-      <img class="cart-item-img" src="${getDriveThumb(item.foto)}" alt="${item.marca}"
-        onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 80%22><rect fill=%22%232a2a2a%22 width=%2264%22 height=%2280%22/></svg>'">
+      <img class="cart-item-img" src="${getDriveThumb(item.foto)}" data-src="${item.foto}" alt="${item.marca}" onerror="imgFallback(this)">
       <div class="cart-item-info">
         <div class="cart-item-brand">${item.marca}</div>
         <div class="cart-item-detail">${item.cat}${item.cor ? ' · ' + item.cor : ''}</div>
