@@ -2,8 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<link rel="preconnect" href="https://script.google.com">
-<link rel="preconnect" href="https://script.googleusercontent.com">
+<link rel="preconnect" href="https://docs.google.com">
 <link rel="preconnect" href="https://lh3.googleusercontent.com">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DR DAS GRIFES — Catálogo</title>
@@ -752,6 +751,9 @@ src="https://www.facebook.com/tr?id=1559873742409715&ev=PageView&noscript=1"
 
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────
+// Fonte principal: aba Produtos publicada na web (CSV, rápido e com cache do Google)
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQfcGlQHJ_pJvswPsIh_Ihhw9JoO_Zanwj4eW1S4J2Tg5hPqAH9v2liZNQcN52yUus9_U27Ue55_eRl/pub?gid=0&single=true&output=csv';
+// Reserva: Apps Script (usado só se o CSV falhar)
 const API_URL = 'https://script.google.com/macros/s/AKfycbz7HqBhejEOHNELpM6TL9b1oaUXtTBZ3qPypWpEYcswmZBCpyM9C6AsWRH9giL0lh4ODA/exec';
 const WHATSAPP = '5511978498705';
 
@@ -769,31 +771,66 @@ let searchTerm = '';
 // O catálogo abre na hora com a última versão salva no aparelho e
 // atualiza em segundo plano. A chamada à planilha tem limite de tempo
 // e tenta de novo sozinha, então ninguém precisa ficar dando F5.
-const CACHE_KEY = 'dg_catalogo_v1';
+const CACHE_KEY = 'dg_catalogo_v2';
 let lastRowsJson = '';
 
-async function fetchComRetry(url, tentativas = 4, timeoutMs = 15000) {
+// Lê CSV (aceita vírgulas e quebras de linha dentro de aspas)
+function parseCSV(text) {
+  const linhas = [];
+  let linha = [], campo = '', aspas = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (aspas) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { campo += '"'; i++; }
+        else aspas = false;
+      } else campo += c;
+    } else if (c === '"') aspas = true;
+    else if (c === ',') { linha.push(campo); campo = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      linha.push(campo); linhas.push(linha); linha = []; campo = '';
+    } else campo += c;
+  }
+  if (campo !== '' || linha.length) { linha.push(campo); linhas.push(linha); }
+  if (!linhas.length) return [];
+  const headers = linhas[0].map(h => h.trim().toLowerCase());
+  return linhas.slice(1)
+    .filter(r => r[0] && r[0].trim())
+    .map(r => {
+      const obj = {};
+      headers.forEach((h, i) => obj[h] = (r[i] || '').trim());
+      return obj;
+    });
+}
+
+async function baixar(url, tipo, timeoutMs) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const sep = url.includes('?') ? '&' : '?';
+    const res = await fetch(url + sep + 't=' + Math.floor(Date.now() / 60000), { signal: ctrl.signal });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = tipo === 'csv' ? parseCSV(await res.text()) : await res.json();
+    if (!Array.isArray(data) || !data.length) throw new Error('Resposta inválida');
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Tenta o CSV (rápido); se falhar, tenta o Apps Script; repete algumas vezes
+async function fetchComRetry(tentativas = 3) {
   let ultimoErro;
   for (let i = 0; i < tentativas; i++) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-      const sep = url.includes('?') ? '&' : '?';
-      const res = await fetch(url + (i ? sep + 't=' + Date.now() : ''), { signal: ctrl.signal });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      if (!Array.isArray(data) || !data.length) throw new Error('Resposta inválida');
-      return data;
-    } catch (e) {
-      ultimoErro = e;
-      console.warn('Tentativa ' + (i + 1) + ' falhou:', e);
-      if (i < tentativas - 1) {
-        const t = document.getElementById('sectionTitle');
-        if (!allProducts.length && t) t.textContent = 'CARREGANDO PRODUTOS... (TENTATIVA ' + (i + 2) + ')';
-        await new Promise(r => setTimeout(r, 1000 * (i + 1)));
-      }
-    } finally {
-      clearTimeout(timer);
+    try { return await baixar(CSV_URL, 'csv', 10000); }
+    catch (e) { ultimoErro = e; console.warn('CSV falhou (tentativa ' + (i + 1) + '):', e); }
+    try { return await baixar(API_URL, 'json', 20000); }
+    catch (e) { ultimoErro = e; console.warn('Apps Script falhou (tentativa ' + (i + 1) + '):', e); }
+    if (i < tentativas - 1) {
+      const t = document.getElementById('sectionTitle');
+      if (!allProducts.length && t) t.textContent = 'CARREGANDO PRODUTOS... (TENTATIVA ' + (i + 2) + ')';
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
     }
   }
   throw ultimoErro;
@@ -853,7 +890,7 @@ async function loadProducts() {
   } catch (e) { /* sem cache, segue */ }
 
   try {
-    const rows = await fetchComRetry(API_URL);
+    const rows = await fetchComRetry();
     try { localStorage.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), rows })); } catch (e) {}
     processRows(rows);
   } catch (e) {
@@ -941,12 +978,21 @@ function imgFallback(img) {
   else { img.onerror = null; img.src = IMG_PLACEHOLDER; }
 }
 
+// Converte "1.500,00", "R$ 150,00", "150.5" ou 150 em número
+function parsePrice(val) {
+  if (typeof val === 'number') return val;
+  let s = String(val || '').replace(/[^\d.,-]/g, '');
+  if (!s) return NaN;
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  return parseFloat(s);
+}
+
 function hasPrice(val) {
-  return !isNaN(parseFloat(String(val).replace(',', '.')));
+  return !isNaN(parsePrice(val));
 }
 
 function formatPrice(val) {
-  const n = parseFloat(String(val).replace(',', '.'));
+  const n = parsePrice(val);
   if (isNaN(n)) return 'Consulte';
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
@@ -1056,7 +1102,7 @@ function addToCart() {
       cat: currentProduct.cat,
       cor: currentProduct.cor,
       tamanho: currentSize,
-      preco: parseFloat(String(currentProduct.preco).replace(',', '.')) || 0,
+      preco: parsePrice(currentProduct.preco) || 0,
       foto: currentProduct.foto,
       qty: currentQty
     });
