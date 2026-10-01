@@ -978,12 +978,13 @@ function imgFallback(img) {
   else { img.onerror = null; img.src = IMG_PLACEHOLDER; }
 }
 
-// Converte "1.500,00", "R$ 150,00", "150.5" ou 150 em número
+// Converte "1.500,00", "1.500", "R$ 150,00", "150.5" ou 150 em número
 function parsePrice(val) {
   if (typeof val === 'number') return val;
   let s = String(val || '').replace(/[^\d.,-]/g, '');
   if (!s) return NaN;
-  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');      // 1.600,00 -> 1600.00
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');  // 1.600 -> 1600
   return parseFloat(s);
 }
 
