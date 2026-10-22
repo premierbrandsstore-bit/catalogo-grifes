@@ -156,6 +156,54 @@
     border-left-color: var(--ink);
   }
 
+  /* ── FILTRO DE TAMANHO ── */
+  .size-block { margin-top: 34px; display: none; }
+  .size-block.show { display: block; }
+
+  .size-head {
+    display: flex; align-items: baseline; gap: 10px;
+    margin-bottom: 12px;
+    padding-right: 28px;
+  }
+
+  .size-clear {
+    background: none; border: none;
+    font-family: var(--font-body);
+    font-size: 9px; letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    cursor: pointer; padding: 0;
+    text-decoration: underline;
+    display: none;
+  }
+  .size-clear.show { display: inline; }
+  .size-clear:hover { color: var(--ink); }
+
+  .size-filter {
+    display: flex; flex-wrap: wrap; gap: 5px;
+    padding-right: 28px;
+  }
+
+  .size-chip {
+    min-width: 34px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--ink-soft);
+    font-family: var(--font-body);
+    font-size: 11px; font-weight: 300;
+    letter-spacing: 0.06em;
+    padding: 6px 7px;
+    cursor: pointer;
+    transition: all 0.16s;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .size-chip:hover { border-color: var(--ink); color: var(--ink); }
+  .size-chip.active {
+    background: var(--ink); border-color: var(--ink);
+    color: var(--paper); font-weight: 400;
+  }
+
   /* ── CATÁLOGO ── */
   .catalog {
     flex: 1;
@@ -212,6 +260,15 @@
     text-transform: uppercase;
     color: var(--muted);
     margin-top: 3px;
+  }
+
+  .card-size {
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-top: 5px;
   }
 
   .card-price {
@@ -597,6 +654,18 @@
     }
     .cat-item.active { border-left-color: transparent; border-bottom-color: var(--ink); }
 
+    .size-block { margin-top: 12px; }
+    .size-head { margin-bottom: 8px; padding-right: 0; }
+    .size-filter {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding-right: 0;
+      padding-bottom: 2px;
+    }
+    .size-filter::-webkit-scrollbar { display: none; }
+    .size-chip { flex-shrink: 0; padding: 5px 9px; }
+
     .catalog { padding: 22px 16px 60px; }
   }
 
@@ -609,6 +678,7 @@
     }
     .card-brand { font-size: 11px; }
     .card-cat { font-size: 9px; }
+    .card-size { font-size: 9px; }
     .card-price { font-size: 11px; }
     .modal-content { padding: 28px 22px; }
   }
@@ -649,13 +719,21 @@ src="https://www.facebook.com/tr?id=1559873742409715&ev=PageView&noscript=1"
 
 <div class="shell">
 
-  <!-- SIDEBAR DE CATEGORIAS -->
+  <!-- SIDEBAR: CATEGORIAS + TAMANHOS -->
   <aside class="sidebar">
     <input class="search-box" type="text" placeholder="Buscar" oninput="searchProducts(this.value)" id="searchInput">
     <p class="eyebrow side-label">Categorias</p>
     <nav class="cat-list" id="catList">
       <button class="cat-item" id="btnTodos" onclick="filterCategoria('todos', this)">Todos</button>
     </nav>
+
+    <div class="size-block" id="sizeBlock">
+      <div class="size-head">
+        <span class="eyebrow side-label" style="margin-bottom:0">Tamanho</span>
+        <button class="size-clear" id="sizeClear" onclick="filterTamanho(null)">Limpar</button>
+      </div>
+      <div class="size-filter" id="sizeFilter"></div>
+    </div>
   </aside>
 
   <!-- CATÁLOGO -->
@@ -739,6 +817,36 @@ const ORDEM_CATEGORIAS = ['Camisetas', 'Calçados', 'Blusas-Casacos'];
 // Categoria que abre selecionada quando o cliente entra ('todos' para abrir tudo)
 const CATEGORIA_PADRAO = 'Camisetas';
 
+// ── FILTRO DE TAMANHO ───────────────────────────────────────────
+// 1) Tamanhos que NÃO entram no filtro (não são tamanho de verdade)
+const TAMANHOS_SEM_FILTRO = ['unico', 'ajustavel', 'consultar', 'grande', 'sob consulta', 'tamanho unico'];
+
+// 2) Numeração de roupa → letra. Editar aqui se entrar 58, 60 etc.
+const EQUIV_NUMERICA = {
+  '44': 'S',  '46': 'S',
+  '48': 'M',  '50': 'M',
+  '52': 'L',  '54': 'L',
+  '56': 'XL'
+};
+
+// 3) Padroniza as letras no padrão internacional (S, M, L, XL, XXL...)
+const SINONIMOS_TAMANHO = {
+  'PP': 'XS',  'XS': 'XS',
+  'P': 'S',    'S': 'S',
+  'M': 'M',
+  'G': 'L',    'L': 'L',
+  'GG': 'XL',  'XL': 'XL',
+  'XGG': 'XXL', 'XXL': 'XXL',
+  'XGGG': 'XXXL', 'XXXL': 'XXXL',
+  'XXXXL': 'XXXXL'
+};
+
+// 4) Categorias em que número é numeração própria (não vira letra)
+const CATEGORIAS_NUMERACAO_PROPRIA = ['Calçados', 'Calcados'];
+
+// 5) Ordem em que as letras aparecem nos botões
+const ORDEM_LETRAS = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', 'XXXXL'];
+
 // ── STATE ────────────────────────────────────────────────────────
 let allProducts = [];
 let filteredProducts = [];
@@ -747,6 +855,7 @@ let currentProduct = null;
 let currentQty = 1;
 let currentSize = null;
 let activeCategoria = 'todos';
+let activeTamanho = null;
 let searchTerm = '';
 let categoriaInicialAplicada = false;
 
@@ -822,6 +931,40 @@ async function fetchComRetry(tentativas = 3) {
 // Compara nomes ignorando acento, caixa e espaços
 function norm(s) {
   return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+}
+
+// ── TAMANHOS: rótulo usado pelo filtro ───────────────────────────
+// Devolve o rótulo do filtro para um tamanho, ou null se não filtrável
+function rotuloTamanho(tam, categoria) {
+  const bruto = String(tam || '').trim();
+  if (!bruto) return null;
+  if (TAMANHOS_SEM_FILTRO.includes(norm(bruto))) return null;
+
+  const up = bruto.toUpperCase().replace(/\s+/g, '');
+
+  // Número puro
+  if (/^\d+$/.test(up)) {
+    const numeracaoPropria = CATEGORIAS_NUMERACAO_PROPRIA.some(c => norm(c) === norm(categoria));
+    if (numeracaoPropria) return up;          // calçado: 42 continua 42
+    return EQUIV_NUMERICA[up] || up;          // roupa: 48 vira M
+  }
+
+  return SINONIMOS_TAMANHO[up] || up;         // letras padronizadas
+}
+
+// Todos os rótulos filtráveis de um produto
+function rotulosDoProduto(p) {
+  const out = [];
+  (p.tamanhos || []).forEach(t => {
+    const r = rotuloTamanho(t, p.cat);
+    if (r && !out.includes(r)) out.push(r);
+  });
+  return out;
+}
+
+// Tamanhos reais (como estão no Drive) que correspondem a um rótulo
+function tamanhosReaisPara(p, rotulo) {
+  return (p.tamanhos || []).filter(t => rotuloTamanho(t, p.cat) === rotulo);
 }
 
 function processRows(rows) {
@@ -942,8 +1085,61 @@ function buildCategories() {
 
 function filterCategoria(cat, btn) {
   activeCategoria = cat;
+  activeTamanho = null;   // troca de categoria zera o tamanho
   document.querySelectorAll('.cat-item').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  applyFilters();
+}
+
+// ── TAMANHOS: botões ─────────────────────────────────────────────
+function ordenarTamanhos(lista) {
+  const letras = lista.filter(t => !/^\d+$/.test(t));
+  const numeros = lista.filter(t => /^\d+$/.test(t));
+
+  letras.sort((a, b) => {
+    const ia = ORDEM_LETRAS.indexOf(a);
+    const ib = ORDEM_LETRAS.indexOf(b);
+    if (ia !== -1 && ib !== -1) return ia - ib;
+    if (ia !== -1) return -1;
+    if (ib !== -1) return 1;
+    return a.localeCompare(b, 'pt-BR');
+  });
+  numeros.sort((a, b) => Number(a) - Number(b));
+
+  return letras.concat(numeros);
+}
+
+function buildSizes() {
+  // Considera categoria + busca, mas NÃO o tamanho selecionado
+  const base = allProducts.filter(p => {
+    const matchCat = activeCategoria === 'todos' || p.cat === activeCategoria;
+    const matchSearch = !searchTerm ||
+      p.nome.toLowerCase().includes(searchTerm) ||
+      p.marca.toLowerCase().includes(searchTerm) ||
+      p.cor.toLowerCase().includes(searchTerm);
+    return matchCat && matchSearch;
+  });
+
+  const tamanhos = ordenarTamanhos([...new Set(base.flatMap(rotulosDoProduto))]);
+
+  const bloco = document.getElementById('sizeBlock');
+  const wrap = document.getElementById('sizeFilter');
+  const clear = document.getElementById('sizeClear');
+
+  // Se o tamanho ativo sumiu da lista, zera
+  if (activeTamanho && !tamanhos.includes(activeTamanho)) activeTamanho = null;
+
+  bloco.classList.toggle('show', tamanhos.length > 0);
+  clear.classList.toggle('show', !!activeTamanho);
+
+  wrap.innerHTML = tamanhos.map(t =>
+    `<button class="size-chip${t === activeTamanho ? ' active' : ''}" onclick="filterTamanho('${t}')">${t}</button>`
+  ).join('');
+}
+
+function filterTamanho(t) {
+  // Clicar no que já está ativo desmarca
+  activeTamanho = (t && t !== activeTamanho) ? t : null;
   applyFilters();
 }
 
@@ -953,13 +1149,16 @@ function searchProducts(val) {
 }
 
 function applyFilters() {
+  buildSizes();
+
   filteredProducts = allProducts.filter(p => {
     const matchCat = activeCategoria === 'todos' || p.cat === activeCategoria;
     const matchSearch = !searchTerm ||
       p.nome.toLowerCase().includes(searchTerm) ||
       p.marca.toLowerCase().includes(searchTerm) ||
       p.cor.toLowerCase().includes(searchTerm);
-    return matchCat && matchSearch;
+    const matchTam = !activeTamanho || rotulosDoProduto(p).includes(activeTamanho);
+    return matchCat && matchSearch && matchTam;
   });
   renderProducts();
 }
@@ -1012,15 +1211,24 @@ function renderProducts() {
   const grid = document.getElementById('productsGrid');
   const title = document.getElementById('sectionTitle');
 
-  const nome = activeCategoria === 'todos' ? 'Todos' : activeCategoria;
-  title.textContent = `${nome} — ${filteredProducts.length} ${filteredProducts.length !== 1 ? 'peças' : 'peça'}`;
+  const nomeCat = activeCategoria === 'todos' ? 'Todos' : activeCategoria;
+  const sufixoTam = activeTamanho ? ` · Tam. ${activeTamanho}` : '';
+  title.textContent = `${nomeCat}${sufixoTam} — ${filteredProducts.length} ${filteredProducts.length !== 1 ? 'peças' : 'peça'}`;
 
   if (!filteredProducts.length) {
     grid.innerHTML = '<div class="no-results">Nenhum produto encontrado</div>';
     return;
   }
 
-  grid.innerHTML = filteredProducts.map((p, i) => `
+  grid.innerHTML = filteredProducts.map((p, i) => {
+    // Com filtro ativo, mostra o tamanho real da peça (ex.: M · 48)
+    let linhaTam = '';
+    if (activeTamanho) {
+      const reais = tamanhosReaisPara(p, activeTamanho);
+      const extras = reais.filter(t => t.toUpperCase().replace(/\s+/g, '') !== activeTamanho);
+      linhaTam = `<div class="card-size">${activeTamanho}${extras.length ? ' · ' + extras.join(' · ') : ''}</div>`;
+    }
+    return `
     <article class="product-card" onclick="openModal(${i})" style="animation: fadeIn 0.4s ease ${(i % 12) * 0.03}s both">
       <div class="card-media">
         <img src="${getDriveThumb(p.foto)}" data-src="${p.foto}" alt="${p.marca || p.cat}" loading="lazy" decoding="async" onerror="imgFallback(this)">
@@ -1028,10 +1236,12 @@ function renderProducts() {
       <div class="card-meta">
         <div class="card-brand">${p.marca || p.cat}</div>
         <div class="card-cat">${p.cat}</div>
+        ${linhaTam}
         <div class="card-price${hasPrice(p.preco) ? '' : ' consult'}">${formatPrice(p.preco)}</div>
       </div>
     </article>
-  `).join('');
+  `;
+  }).join('');
 }
 
 // ── MODAL ────────────────────────────────────────────────────────
@@ -1053,11 +1263,19 @@ function openModal(idx) {
   document.getElementById('modalPrice').textContent = formatPrice(currentProduct.preco);
   document.getElementById('qtyDisplay').textContent = 1;
 
+  // Se veio de um filtro de tamanho, já deixa esse tamanho marcado
+  let preSelecionado = null;
+  if (activeTamanho) {
+    const reais = tamanhosReaisPara(currentProduct, activeTamanho);
+    if (reais.length === 1) preSelecionado = reais[0];
+  }
+
   const sizesEl = document.getElementById('modalSizes');
   if (currentProduct.tamanhos.length > 0) {
     sizesEl.innerHTML = currentProduct.tamanhos.map(t => `
-      <button class="size-btn" onclick="selectSize('${t}', this)">${t}</button>
+      <button class="size-btn${t === preSelecionado ? ' selected' : ''}" onclick="selectSize('${t}', this)">${t}</button>
     `).join('');
+    if (preSelecionado) currentSize = preSelecionado;
   } else {
     sizesEl.innerHTML = '<span style="color:var(--muted);font-size:11px;letter-spacing:0.14em;text-transform:uppercase">Tamanho único</span>';
     currentSize = 'ÚNICO';
