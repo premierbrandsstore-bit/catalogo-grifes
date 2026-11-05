@@ -27,7 +27,13 @@
 
     --header-h: 60px;
     --side-w: 208px;
+
+    /* Altura da faixa Black Friday (0 = faixa desligada) */
+    --bf-h: 0px;
   }
+
+  body.bf-on { --bf-h: 64px; }
+  @media (max-width: 520px) { body.bf-on { --bf-h: 56px; } }
 
   html { scroll-behavior: smooth; }
 
@@ -49,9 +55,105 @@
     font-weight: 400;
   }
 
+  /* ── FAIXA BLACK FRIDAY ── */
+  .bf-bar {
+    position: fixed; top: 0; left: 0; right: 0;
+    height: var(--bf-h);
+    z-index: 110;
+    display: none;
+    overflow: hidden;
+    background: #0a0a0a;
+  }
+  body.bf-on .bf-bar { display: block; }
+
+  .bf-strip { position: absolute; inset: 0; display: flex; opacity: 0.34; }
+
+  .bf-track {
+    display: flex;
+    animation: bf-roll 48s linear infinite;
+    will-change: transform;
+  }
+
+  .bf-track img {
+    height: var(--bf-h);
+    width: 74px;
+    object-fit: cover;
+    flex-shrink: 0;
+    margin-right: 2px;
+    display: block;
+  }
+
+  @keyframes bf-roll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+
+  .bf-veil {
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, #0a0a0a 0%, rgba(10,10,10,0.62) 22%, rgba(10,10,10,0.62) 78%, #0a0a0a 100%);
+  }
+
+  .bf-in {
+    position: relative; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    gap: 26px; padding: 0 16px;
+  }
+
+  .bf-title {
+    font-size: 13px; letter-spacing: 0.3em;
+    text-transform: uppercase; color: #ffffff;
+    font-weight: 500; white-space: nowrap; line-height: 1.2;
+  }
+
+  .bf-sub {
+    font-size: 10px; letter-spacing: 0.2em;
+    text-transform: uppercase; color: #a8a49e;
+    white-space: nowrap; margin-top: 3px;
+  }
+
+  .bf-count { display: flex; gap: 14px; }
+
+  .bf-unit { min-width: 42px; text-align: center; }
+  .bf-unit b {
+    display: block; font-size: 22px; color: #ffffff;
+    font-weight: 500; line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+  }
+  .bf-unit span {
+    font-size: 9px; letter-spacing: 0.14em;
+    color: #95918c; text-transform: uppercase;
+  }
+
+  .bf-cta {
+    border: 1px solid rgba(255,255,255,0.55);
+    background: none; color: #ffffff;
+    font-family: var(--font-body);
+    font-size: 10px; letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 9px 18px; cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .bf-cta:hover { background: #ffffff; color: #0a0a0a; }
+
+  @media (max-width: 520px) {
+    .bf-in { gap: 14px; padding: 0 10px; }
+    .bf-title { font-size: 11px; letter-spacing: 0.2em; }
+    .bf-sub { font-size: 9px; letter-spacing: 0.12em; }
+    .bf-count { gap: 10px; }
+    .bf-unit { min-width: 32px; }
+    .bf-unit b { font-size: 18px; }
+    .bf-cta { padding: 8px 12px; font-size: 10px; letter-spacing: 0.12em; }
+    .bf-track img { width: 56px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bf-track { animation: none; }
+  }
+
   /* ── HEADER ── */
   header {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    position: fixed; top: var(--bf-h); left: 0; right: 0; z-index: 100;
     background: rgba(255,255,255,0.94);
     backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--line);
@@ -96,7 +198,7 @@
 
   /* ── SHELL: SIDEBAR + CONTEÚDO ── */
   .shell {
-    margin-top: var(--header-h);
+    margin-top: calc(var(--header-h) + var(--bf-h));
     display: flex;
     align-items: flex-start;
   }
@@ -105,8 +207,8 @@
     width: var(--side-w);
     flex-shrink: 0;
     position: sticky;
-    top: var(--header-h);
-    height: calc(100vh - var(--header-h));
+    top: calc(var(--header-h) + var(--bf-h));
+    height: calc(100vh - var(--header-h) - var(--bf-h));
     overflow-y: auto;
     border-right: 1px solid var(--line);
     padding: 30px 0 30px 28px;
@@ -623,7 +725,7 @@
 
     .sidebar {
       width: 100%;
-      position: sticky; top: var(--header-h);
+      position: sticky; top: calc(var(--header-h) + var(--bf-h));
       height: auto;
       border-right: none;
       border-bottom: 1px solid var(--line);
@@ -708,6 +810,25 @@ src="https://www.facebook.com/tr?id=1559873742409715&ev=PageView&noscript=1"
 <!-- End Meta Pixel Code -->
 </head>
 <body>
+
+<!-- FAIXA BLACK FRIDAY -->
+<div class="bf-bar" id="bfBar">
+  <div class="bf-strip"><div class="bf-track" id="bfTrack"></div></div>
+  <div class="bf-veil"></div>
+  <div class="bf-in">
+    <div style="text-align:center">
+      <div class="bf-title" id="bfTitle">Black Friday</div>
+      <div class="bf-sub" id="bfSub">Começa em</div>
+    </div>
+    <div class="bf-count" id="bfCount">
+      <div class="bf-unit"><b id="bfDias">00</b><span>Dias</span></div>
+      <div class="bf-unit"><b id="bfHoras">00</b><span>Horas</span></div>
+      <div class="bf-unit"><b id="bfMin">00</b><span>Min</span></div>
+      <div class="bf-unit"><b id="bfSeg">00</b><span>Seg</span></div>
+    </div>
+    <button class="bf-cta" id="bfCta" onclick="bfVerOfertas()" style="display:none">Ver ofertas</button>
+  </div>
+</div>
 
 <!-- HEADER -->
 <header>
@@ -816,6 +937,18 @@ const WHATSAPP = '5511978498705';
 const ORDEM_CATEGORIAS = ['Camisetas', 'Calçados', 'Blusas-Casacos'];
 // Categoria que abre selecionada quando o cliente entra ('todos' para abrir tudo)
 const CATEGORIA_PADRAO = 'Camisetas';
+
+// ── BLACK FRIDAY ────────────────────────────────────────────────
+// Antes do início: contagem regressiva.
+// Entre início e fim: faixa "Black Friday no ar" com botão de ofertas.
+// Depois do fim: a faixa some sozinha e o site volta ao normal.
+const BF_ATIVO  = true;                          // false desliga tudo na hora
+const BF_INICIO = '2026-11-13T00:00:00-03:00';
+const BF_FIM    = '2026-12-01T00:00:00-03:00';   // some após essa data
+
+const BF_TXT_ANTES    = { titulo: 'Black Friday', sub: 'Começa em' };
+const BF_TXT_NO_AR    = { titulo: 'Black Friday no ar', sub: 'Ofertas por tempo limitado' };
+const BF_CATEGORIA_OFERTAS = 'Promoções';        // para onde o botão leva
 
 // ── FILTRO DE TAMANHO ───────────────────────────────────────────
 // 1) Tamanhos que NÃO entram no filtro (não são tamanho de verdade)
@@ -1421,8 +1554,93 @@ function showToast(msg) {
   setTimeout(() => el.classList.remove('show'), 2500);
 }
 
+// ── BLACK FRIDAY ─────────────────────────────────────────────────
+let bfFotosMontadas = false;
+
+// Monta a esteira de fotos com produtos do próprio catálogo
+function bfMontarFotos() {
+  if (bfFotosMontadas || !allProducts.length) return;
+  const track = document.getElementById('bfTrack');
+  if (!track) return;
+
+  const fotos = allProducts
+    .map(p => p.foto)
+    .filter(Boolean)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 20);
+
+  if (!fotos.length) return;
+
+  // duplica a lista para o loop ficar contínuo
+  const html = fotos.concat(fotos)
+    .map(f => `<img src="${getDriveThumb(f)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">`)
+    .join('');
+
+  track.innerHTML = html;
+  bfFotosMontadas = true;
+}
+
+function bfAtualizar() {
+  if (!BF_ATIVO) return;
+
+  const agora = Date.now();
+  const inicio = new Date(BF_INICIO).getTime();
+  const fim = new Date(BF_FIM).getTime();
+
+  // Acabou: tira a faixa do ar
+  if (agora >= fim) {
+    document.body.classList.remove('bf-on');
+    return;
+  }
+
+  document.body.classList.add('bf-on');
+  bfMontarFotos();
+
+  const titulo = document.getElementById('bfTitle');
+  const sub = document.getElementById('bfSub');
+  const count = document.getElementById('bfCount');
+  const cta = document.getElementById('bfCta');
+
+  // Já começou: vira banner de campanha no ar
+  if (agora >= inicio) {
+    titulo.textContent = BF_TXT_NO_AR.titulo;
+    sub.textContent = BF_TXT_NO_AR.sub;
+    count.style.display = 'none';
+    cta.style.display = '';
+    return;
+  }
+
+  // Ainda não começou: contagem regressiva
+  titulo.textContent = BF_TXT_ANTES.titulo;
+  sub.textContent = BF_TXT_ANTES.sub;
+  count.style.display = '';
+  cta.style.display = 'none';
+
+  const falta = inicio - agora;
+  const pad = n => String(n).padStart(2, '0');
+  document.getElementById('bfDias').textContent  = pad(Math.floor(falta / 86400000));
+  document.getElementById('bfHoras').textContent = pad(Math.floor(falta / 3600000) % 24);
+  document.getElementById('bfMin').textContent   = pad(Math.floor(falta / 60000) % 60);
+  document.getElementById('bfSeg').textContent   = pad(Math.floor(falta / 1000) % 60);
+}
+
+// Botão "Ver ofertas" leva para a categoria de promoções
+function bfVerOfertas() {
+  const alvo = allProducts.find(p => norm(p.cat) === norm(BF_CATEGORIA_OFERTAS));
+  if (alvo) {
+    const btn = document.querySelector(`.cat-item[data-cat="${alvo.cat}"]`);
+    if (btn) { btn.click(); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+  }
+  // Sem categoria de promoções: mostra tudo
+  const todos = document.getElementById('btnTodos');
+  if (todos) { todos.click(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+}
+
 // ── INIT ─────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+bfAtualizar();
+setInterval(bfAtualizar, 1000);
 
 const style = document.createElement('style');
 style.textContent = '@keyframes fadeIn { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:none } }';
